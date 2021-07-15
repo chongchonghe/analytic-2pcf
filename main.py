@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from time import time
 import csv
-import src
+import tpcf
 
 def test_numba():
     from time import time
@@ -29,9 +29,9 @@ def test_numba():
     d = np.random.random([10000, 3])
     dpart = d[:100, :]
     rs = np.logspace(-3, 0, 20)
-    src.dr_cuboid(dpart, rs, 1, 1, 1)
+    tpcf.dr_cuboid(dpart, rs, 1, 1, 1)
     t1 = time()
-    src.dr_cuboid(d, rs, 1, 1, 1)
+    tpcf.dr_cuboid(d, rs, 1, 1, 1)
     dt = time() - t1
     print(f"Time elapsed: {dt} sec")
     print(f"If numba is working properly, this time should be under 1 second, "
@@ -72,7 +72,7 @@ def main():
     rbins2 = (rbins[1:] + rbins[:-1]) / 2 / a
 
     est = 'LS'
-    xi = src.analytic_tpcf(sample1, rbins, shape='cuboid', bounds=dim, est=est)
+    xi = tpcf.analytic_tpcf(sample1, rbins, shape='cuboid', bounds=dim, est=est)
 
     plt.plot(rbins2, xi, 'k',)
     plt.gca().set(xscale='log', yscale='log',
