@@ -1,19 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""main.py
-
-The the tpcf.py. Generate an analytically calculated two-point correlation function
+"""test.py
 
 Run
 -------
-python main.py
+python test.py
+
+Author
+------
+Chong-Chong He (che1234@umd.edu)
 
 """
-
-#-----------------------------------------------------------------------------
-#    Author: Chong-Chong He (che1234@umd.edu)
-#    Data: 2021-05-05
-#-----------------------------------------------------------------------------
 
 import sys, os
 import numpy as np
@@ -23,22 +20,21 @@ from time import time
 import csv
 import tpcf
 
-def test_numba():
-    from time import time
-    print("Testing numba acceleration")
+def testnumba():
+
+    print("Testing numba acceleration by running dr_cuboid on 10,000 particles.")
     d = np.random.random([10000, 3])
-    dpart = d[:100, :]
+    dpart = d[:100, :]  # compile the numba machine code
     rs = np.logspace(-3, 0, 20)
     tpcf.dr_cuboid(dpart, rs, 1, 1, 1)
     t1 = time()
     tpcf.dr_cuboid(d, rs, 1, 1, 1)
     dt = time() - t1
     print(f"Time elapsed: {dt} sec")
-    print(f"If numba is working properly, this time should be under 1 second, "
-          "likely under 0.1 second.")
+    print(f"If numba is installed and working properly, this time should "
+          "be under 0.1 seconds.\n")
 
-
-def get_data_eagle(NDIM=3, choose="1"):
+def get_eagle_data(NDIM=3, choose="1"):
 
     data_dir = "mock-data"
     sim_name = {"1": "RefL0050N0752_Subhalo",
@@ -58,13 +54,12 @@ def get_data_eagle(NDIM=3, choose="1"):
     elif NDIM == 3:
         return data.T, (boxlen, boxlen, boxlen)
 
-
-def main():
-    """ Plot analytically calculated TPCF 
+def plot_test_tpcf():
+    """ Plot analytically calculated TPCF
     """
 
-    sample0, dim = get_data_eagle()
-    N = 1000
+    sample0, dim = get_eagle_data()
+    N = 10000
     sample1 = sample0[:N, :]
     print(f"Doing {N} data particles")
     a, b, c = dim
@@ -79,9 +74,11 @@ def main():
            ylabel=r"$\xi(r)$",
            xlabel="Normalized radius $r$",
            )
+    plt.savefig("test.png", dpi=300)
+    print("test.png saved")
     plt.show()
-
 
 if __name__ == "__main__":
 
-    main()
+    testnumba()
+    plot_test_tpcf()

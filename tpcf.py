@@ -1,26 +1,29 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """tpcf.py
-Tools to compute the two-point correlation functions analytically.
+Tools to compute the two-point correlation functions accurately and
+efficiently using analytic method.
 
 Attributes
 ----------
+    analytic_rr(rs, shape='rect', bounds=None)
+    analytic_dr(D, rs, shape='rect', bounds=None)
+    calculate_dd(D, r)
+    analytic_tpcf(D, rs, shape='rect', bounds=None, est='nat')
 
 Example
 -------
 
 Reference:
 -------
-He2021 
+He2021
+
+Author
+------
+Chong-Chong He (che1234@umd.edu)
 
 """
 
-#-----------------------------------------------------------------------------
-#    Author: Chong-Chong He (che1234@umd.edu)
-#    Data: 2021-04-24
-#-----------------------------------------------------------------------------
-
-# from __future__ import division, print_function
 import sys
 import numpy as np
 from numpy.linalg import norm
@@ -30,91 +33,27 @@ from time import time
 try:
     from numba import jit
 except ModuleNotFoundError:
-    print("""To use numba to speed up the code, please install numba (pip/conda
+    pass
+    sys.exit("""To use numba to speed up the code, please install numba (pip/conda
 install numba). It is tested and shown that numba speed up dr_cuboid()
-by 100 times. To preceed without using numba, remove the following
-line (sys.exit()) and comment out all the lines with '@jit' """)
-    sys.exit()
+by 100 times. To preceed without using numba, comment out this line at the
+beginning of tpcf.py and all the lines biginning with '@jit' """)
 
-def MC_tpcf_mean_sigma(D, r, bounds=None, n_catalogue=40, random_size=None, est='natural',
-                       shape='rec', seed=None):
-    """Compute two-point correlation functions using MC method
+#------------------- Auxiliary functions -------------------------
 
-    Arg:
-        D (2D array): array of particles showing their positions. This must be 
-            a n by 2 or 3 array
-        r (array): array of scales at which the TPCF is calculated
-        bound (list): the dimensions of the survay area. It is the length of 
-            the two sides of a rectangle, or the lengths of the three sides 
-            of a cuboid. When bound is None, unitary sides are assumed.
-        shape (str): one of ['rec', 'cuboid', 'circle', 'sphere']
-        n_catalogue (int): the number of random catalogues. They are used to 
-            estimate the mean and std of the TPCF.
-    
-    Return:
-        Mean and sigma of xi(r)
-    """
-
-    assert shape in ['rect', 'cuboid', 'circle', 'sphere']
-    assert est in ['nat', 'natural', 'LS']
-    n = D.shape[0]
-    D_tree = cKDTree(D)
-    DD = D_tree.count_neighbors(D_tree, r, cumulative=False)[1:]  # including itself
-    DDhat = DD / n**2
-    if random_size is None:
-        random_size = n
-    if seed is not None:
-        np.random.seed(seed)
-    RRs = np.zeros([n_catalogue, len(r) - 1])
-    DRs = np.zeros([n_catalogue, len(r) - 1])
-    for i in range(n_catalogue):
-        print(f"{i}/{n_catalogue}")
-        if shape in ['rec', 'cuboid']:
-            R = np.random.random([random_size, D.shape[1]])
-            for j in range(len(bounds)):
-                R[:, j] *= bounds[j]
-        else:
-            randomr = np.random.random(random_size)
-            randomphi = np.random.random(random_size) * 2 * pi
-            if D.shape[1] == 2:
-                R = np.vstack((np.sqrt(randomr) * np.cos(randomphi),
-                               np.sqrt(randomr) * np.sin(randomphi))).T
-            elif D.shape[1] == 3:
-                random_costheta = np.random.random(random_size) * 2 - 1  # from -1 to 1
-                random_sintheta = np.sqrt(1 - random_costheta**2)
-                R = np.vstack((
-                    randomr**(1/3) * random_sintheta * np.cos(randomphi),
-                    randomr**(1/3) * random_sintheta * np.sin(randomphi),
-                    randomr**(1/3) * random_costheta)).T
-        R_tree = cKDTree(R)
-        RRs[i, :] = R_tree.count_neighbors(R_tree, r, cumulative=False)[1:]
-        DRs[i, :] = D_tree.count_neighbors(R_tree, r, cumulative=False)[1:]
-    RR_mean = np.mean(RRs, axis=0)
-    RRhat = RR_mean / random_size**2
-    RR_std = np.std(RRs, axis=0) / random_size**2
-    DR_mean = np.mean(DRs, axis=0)
-    DRhat = DR_mean / (n * random_size)
-    DR_std = np.std(DRs, axis=0) / (n * random_size)
-    if est in ['natural', 'nat']:
-        xi = DDhat / RRhat - 1
-        xi_std = RR_std / RRhat * (DDhat / RRhat)
-        return xi, xi_std
-    else:
-        xi = (DDhat - 2 * DRhat + RRhat) / RRhat
-        d_A2 = RR_std**2 + 4 * DR_std**2
-        d_B2 = RR_std**2
-        A = DDhat - DRhat + RRhat
-        B = RRhat
-        d_xi2 = (d_A2 / A**2 + d_B2 / B**2) * xi**2
-        xi_std = np.sqrt(d_xi2)
-        return xi, xi_std
 def rr_rectangle(r, a, b):
     """Antiderivative of RR_rectangle. Equation (63) of He2021
+
+    The RR from r1 to r2 for a rectangular area with sides a and b is
+    rr_rectangle(r2, a, b) - rr_rectangle(r1, a, b)
     """
     return (2 * a * b * np.pi * r**2/2 - 4 * (a + b) * r**3/3 + 2 * r**4/4) / (a**2 * b**2)
 
 def rr_cuboid(r, a, b, c):
     """Antiderivative of RR_cuboid. Equation (64) of He2021
+
+    The RR from r1 to r2 for a cuboidal area with sides a and b is
+    rr_cuboid(r2, a, b, c) - rr_rectangle(r1, a, b, c)
     """
     top = 4 * pi * a * b * c * r**3/3
     top += -2. * pi * (a*b + a*c + b*c) * r**4/4
@@ -124,17 +63,27 @@ def rr_cuboid(r, a, b, c):
 
 def rr_unit_circle(r):
     """Antiderivative of RR_circle. Equation (65) of He2021
+
+    The RR from r1 to r2 for a unit circular area is
+    rr_unit_circle(r2) - rr_unit_circle(r1)
     """
     return r**2 - 4 / (3 * pi) * r**3 + 1 / (30 * pi) * r**5 + 1 / (7 * 160 * pi) * r**7
 
 def rr_unit_sphere(r):
     """Antiderivative of RR_sphere. Equation (66) of He2021
+
+    The RR from r1 to r2 for a unit spherical area is
+    rr_unit_sphere(r2) - rr_unit_sphere(r1)
     """
     return r**3 - 9 / 16 * r**4 + 1 / 32 * r**6
 
 @jit
 def dr_rectangle(data, rs, a, b):
-    """Compute DR_rectangle(r) in O(n) time. Figure A1 of He2021. 
+    """Compute DR_rectangle(r) in O(n) time. Figure A1 of He2021.
+
+    For a given dataset with the positions of a population of galaxies inside
+    a rectangular area with sides a and b, returns the DR in a list of
+    length scales, rs.
     """
 
     def int_rec_edge(r, gap):
@@ -196,7 +145,11 @@ def dr_rectangle(data, rs, a, b):
 
 @jit
 def dr_cuboid(data, rs, a, b, c):
-    """Compute DR_cuboid(r) in O(n) time. Figure A2 of He2021. 
+    """Compute DR_cuboid(r) in O(n) time. Figure A2 of He2021.
+
+    For a given dataset with the positions of a population of galaxies inside
+    a cuboidal area with sides a, b, and c, returns the DR in a list of
+    length scales, rs.
     """
 
     def int_cube_face(r, gap):
@@ -286,7 +239,10 @@ def dr_cuboid(data, rs, a, b, c):
 
 @jit
 def dr_unit_circle(data, rs):
-    """Compute DR_circle(r) in O(n) time. Figure A3 of He2021. 
+    """Compute DR_circle(r) in O(n) time. Figure A3 of He2021.
+
+    For a given dataset with the positions of a population of galaxies inside
+    a unit circle, returns the DR in a list of length scales, rs.
     """
 
     # make sure the circle has unitary radius
@@ -331,7 +287,10 @@ def dr_unit_circle(data, rs):
 
 @jit
 def dr_unit_sphere(data, rs):
-    """Compute DR_sphere(r) in O(n) time. Figure A4 of He2021. 
+    """Compute DR_sphere(r) in O(n) time. Figure A4 of He2021.
+
+    For a given dataset with the positions of a population of galaxies inside
+    a unit sphere, returns the DR in a list of length scales, rs.
     """
 
     # make sure the circle has unitary radius
@@ -364,8 +323,21 @@ def dr_unit_sphere(data, rs):
         DRhat.append(drpair / (N * 4. / 3 * pi))
     return DRhat
 
-def analytic_rr(r, shape='rect', bounds=None):
-    if shape in ['rect', 'sphere']: 
+#------------------- Main functions -------------------------
+
+def analytic_rr(rs, shape='rect', bounds=None):
+    """Returns the normalized RR in a list of length scales, rs.
+
+    Args:
+        rs (list): list of length scales at which RR is calculated
+        shape (str): geometrical shape of the field,
+            One of 'rect', 'cuboid', 'circle', 'sphere'.
+        bounds (list): dimensions of the survey area in the format of
+            [length, height] of a rectangle or [length, height, depth] of a
+            cuboid. For circles and spheres, bounds is ignored.
+    """
+
+    if shape in ['rect', 'circle']:
         (a, b) = (1, 1) if bounds is None else bounds
     elif shape in ['cuboid', 'sphere']:
         (a, b, c) = (1, 1, 1) if bounds is None else bounds
@@ -373,21 +345,33 @@ def analytic_rr(r, shape='rect', bounds=None):
         print("MyError: shape must be one of: rect, sphere, cuboid, sphere")
         return None
     if shape == 'rect':
-        RRhat = rr_rectangle(r[1:], a, b) - rr_rectangle(r[:-1], a, b)
+        RRhat = rr_rectangle(rs[1:], a, b) - rr_rectangle(rs[:-1], a, b)
     elif shape == 'cuboid':
-        RRhat = rr_cuboid(r[1:], a, b, c) - rr_cuboid(r[:-1], a, b, c)
+        RRhat = rr_cuboid(rs[1:], a, b, c) - rr_cuboid(rs[:-1], a, b, c)
     elif shape == 'circle':
         assert norm(D, axis=1).max() <= 1.0, \
             "All points should be inside a unit circle"
-        RRhat = rr_unit_circle(r[1:]) - rr_unit_circle(r[:-1])
+        RRhat = rr_unit_circle(rs[1:]) - rr_unit_circle(rs[:-1])
     elif shape == 'sphere':
         assert norm(D, axis=1).max() <= 1.0, \
             "All points should be inside a unit sphere"
-        RRhat = rr_unit_sphere(r[1:]) - rr_unit_sphere(r[:-1])
+        RRhat = rr_unit_sphere(rs[1:]) - rr_unit_sphere(rs[:-1])
     return RRhat
 
-def analytic_dr(D, r, shape='rect', bounds=None):
-    if shape in ['rect', 'sphere']: 
+def analytic_dr(D, rs, shape='rect', bounds=None):
+    """Returns the normalized DR in a list of length scales, rs.
+
+    Args:
+        D (2D array): N by 2 or 3 arrays of the coordinates of the galaxy particles.
+        rs (list): a list of length scales at which RR is calculated
+        shape (str): geometrical shape of the field,
+            One of 'rect', 'cuboid', 'circle', 'sphere'.
+        bounds (list): dimensions of the survey area in the format of
+            [length, height] of a rectangle or [length, height, depth] of a
+            cuboid. For circles and spheres, bounds is ignored.
+    """
+
+    if shape in ['rect', 'sphere']:
         (a, b) = (1, 1) if bounds is None else bounds
     elif shape in ['cuboid', 'sphere']:
         (a, b, c) = (1, 1, 1) if bounds is None else bounds
@@ -395,42 +379,45 @@ def analytic_dr(D, r, shape='rect', bounds=None):
         print("MyError: shape must be one of: rect, sphere, cuboid, sphere")
         return None
     if shape == 'rect':
-        DRhat = np.array(dr_rectangle(D, r, a, b))
+        DRhat = np.array(dr_rectangle(D, rs, a, b))
     elif shape == 'circle':
-        DRhat = np.array(dr_unit_circle(D, r))
+        DRhat = np.array(dr_unit_circle(D, rs))
     elif shape == 'cuboid':
-        DRhat = np.array(dr_cuboid(D, r, a, b, c))
+        DRhat = np.array(dr_cuboid(D, rs, a, b, c))
     elif shape == 'sphere':
-        DRhat = np.array(dr_unit_sphere(D, r))
+        DRhat = np.array(dr_unit_sphere(D, rs))
     return DRhat
 
 def calculate_dd(D, r):
+    """Brute-force calculation of normalized DD using scipy.cKDTree
+    """
+
     D_tree = cKDTree(D)
     # count_neighbors includes self-self pair counts
     DD = D_tree.count_neighbors(D_tree, r, cumulative=False)[1:]
     return DD / D.shape[0]**2
 
-def analytic_tpcf(D, r, shape='rect', bounds=None, est='nat'):
-    """Compute TPCF analytically based on the method proposed in He2021.
+def analytic_tpcf(D, rs, shape='rect', bounds=None, est='nat'):
+    """Compute TPCF analytically based on the method presented in He2021.
 
     Args:
-        D (2D array): array of particles showing their positions. This must be 
-            a n by 2 or 3 array
-        r (array): array of scales at which the TPCF is calculated
-        shape (str): one of ['rec', 'cuboid', 'circle', 'sphere']
-        bound (list): the dimensions of the survay area. It is the length of 
-            the two sides of a rectangle, or the lengths of the three sides 
+        D (2D array): array of galaxy particle coordinates. This must be
+            a N by 2 or 3 array
+        rs (array): array of scales at which the TPCF is calculated
+        shape (str): one of ['rect', 'cuboid', 'circle', 'sphere']
+        bound (list): the dimensions of the survay area. It is the length of
+            the two sides of a rectangle, or the lengths of the three sides
             of a cuboid. When bound is None, unitary sides are assumed.
         est (str): the estimator to use. One of ['nat', 'LS']
     """
 
     t1 = time()
-    RRhat = analytic_rr(r, shape, bounds)
+    RRhat = analytic_rr(rs, shape, bounds)
     dt = time() - t1
     print(f"Time spent on RR: {dt} sec")
 
     t1 = time()
-    DDhat = calculate_dd(D, r)
+    DDhat = calculate_dd(D, rs)
     dt = time() - t1
     print(f"Time spent on DD: {dt} sec")
 
@@ -438,10 +425,87 @@ def analytic_tpcf(D, r, shape='rect', bounds=None, est='nat'):
         return DDhat / RRhat - 1
     elif est == 'LS':
         # compile analytic_dr with numba
-        analytic_dr(D[:100, :], r, shape, bounds)
+        analytic_dr(D[:100, :], rs, shape, bounds)
         t1 = time()
-        DRhat = analytic_dr(D, r, shape, bounds)
+        DRhat = analytic_dr(D, rs, shape, bounds)
         dt = time() - t1
         print(f"Time spent on DR: {dt} sec")
         return (DDhat - 2 * DRhat + RRhat) / RRhat
+
+def MC_tpcf_mean_sigma(D, rs, bounds=None, n_catalogue=20, random_size=None, est='natural',
+                       shape='rect', seed=None):
+    """Compute two-point correlation functions using MC method and return
+    the mean and sigma of the estimated xi(r) from n_catalogue random
+    catalogues. This function is not perticular insteresting for this program.
+    It is added here just for completeness and for testing and benchmarking
+    our analytic method.
+
+    Arg:
+        D (2D array): array of particles showing their positions. This must be
+            a n by 2 or 3 array
+        rs (array): array of scales at which the TPCF is calculated
+        bound (list): the dimensions of the survay area. It is the length of
+            the two sides of a rectangle, or the lengths of the three sides
+            of a cuboid. When bound is None, unitary sides are assumed.
+        shape (str): one of ['rect', 'cuboid', 'circle', 'sphere']
+        n_catalogue (int): the number of random catalogues. They are used to
+            estimate the mean and std of the TPCF.
+
+    Return:
+        Mean and sigma of xi(r)
+    """
+
+    assert shape in ['rect', 'cuboid', 'circle', 'sphere']
+    assert est in ['nat', 'natural', 'LS']
+    n = D.shape[0]
+    D_tree = cKDTree(D)
+    DD = D_tree.count_neighbors(D_tree, rs, cumulative=False)[1:]  # including itself
+    DDhat = DD / n**2
+    if random_size is None:
+        random_size = n
+    if seed is not None:
+        np.random.seed(seed)
+    RRs = np.zeros([n_catalogue, len(rs) - 1])
+    DRs = np.zeros([n_catalogue, len(rs) - 1])
+    for i in range(n_catalogue):
+        print(f"{i}/{n_catalogue}")
+        if shape in ['rect', 'cuboid']:
+            R = np.random.random([random_size, D.shape[1]])
+            for j in range(len(bounds)):
+                R[:, j] *= bounds[j]
+        else:
+            randomr = np.random.random(random_size)
+            randomphi = np.random.random(random_size) * 2 * pi
+            if D.shape[1] == 2:
+                R = np.vstack((np.sqrt(randomr) * np.cos(randomphi),
+                               np.sqrt(randomr) * np.sin(randomphi))).T
+            elif D.shape[1] == 3:
+                random_costheta = np.random.random(random_size) * 2 - 1  # from -1 to 1
+                random_sintheta = np.sqrt(1 - random_costheta**2)
+                R = np.vstack((
+                    randomr**(1/3) * random_sintheta * np.cos(randomphi),
+                    randomr**(1/3) * random_sintheta * np.sin(randomphi),
+                    randomr**(1/3) * random_costheta)).T
+        R_tree = cKDTree(R)
+        RRs[i, :] = R_tree.count_neighbors(R_tree, rs, cumulative=False)[1:]
+        DRs[i, :] = D_tree.count_neighbors(R_tree, rs, cumulative=False)[1:]
+    RR_mean = np.mean(RRs, axis=0)
+    RRhat = RR_mean / random_size**2
+    RR_std = np.std(RRs, axis=0) / random_size**2
+    DR_mean = np.mean(DRs, axis=0)
+    DRhat = DR_mean / (n * random_size)
+    DR_std = np.std(DRs, axis=0) / (n * random_size)
+    if est in ['natural', 'nat']:
+        xi = DDhat / RRhat - 1
+        xi_std = RR_std / RRhat * (DDhat / RRhat)
+        return xi, xi_std
+    else:
+        xi = (DDhat - 2 * DRhat + RRhat) / RRhat
+        d_A2 = RR_std**2 + 4 * DR_std**2
+        d_B2 = RR_std**2
+        A = DDhat - DRhat + RRhat
+        B = RRhat
+        d_xi2 = (d_A2 / A**2 + d_B2 / B**2) * xi**2
+        xi_std = np.sqrt(d_xi2)
+        return xi, xi_std
 
