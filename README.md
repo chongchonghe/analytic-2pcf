@@ -1,4 +1,4 @@
-# Computing Two-point Correlation Function Analytically
+# Analytically Compution of the Two-point Correlation Functions 
 
 If you use this code in your research, please consider citing the
 following article:
@@ -24,8 +24,12 @@ provided to compute the data-data pair counts DD using scipy.cKDTree.
 
 For an example usage of the functions, check the `main` function in `main.py`. 
 
+To try out this code, run `python main.py`. It will create a figure of
+the TPCF of a mock galaxy. The time elapsed on DD, RR, and DR are
+reported.
+
 ## Authors
 
 Chong-Chong He  
-che1234 at umd.edu
+che1234 at umd.edu  
 <https://www.astro.umd.edu/~chongchong/>
