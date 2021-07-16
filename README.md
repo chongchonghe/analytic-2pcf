@@ -2,7 +2,7 @@
 
 If you use this code in your research, please consider citing the following article:
 
-(to be added later)
+https://ui.adsabs.harvard.edu/abs/2021arXiv210706918H/abstract
 
 ## Getting Started
 
