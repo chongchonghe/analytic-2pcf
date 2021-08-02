@@ -22,8 +22,9 @@ import tpcf
 
 def testnumba():
 
-    print("Testing numba acceleration by running dr_cuboid on 10,000 particles.")
-    d = np.random.random([10000, 3])
+    N = 3000
+    print(f"Testing numba acceleration by running dr_cuboid on {N} particles.")
+    d = np.random.random([N, 3])
     dpart = d[:100, :]  # compile the numba machine code
     rs = np.logspace(-3, 0, 20)
     tpcf.dr_cuboid(dpart, rs, 1, 1, 1)
@@ -31,8 +32,8 @@ def testnumba():
     tpcf.dr_cuboid(d, rs, 1, 1, 1)
     dt = time() - t1
     print(f"Time elapsed: {dt} sec")
-    print(f"If numba is installed and working properly, this time should "
-          "be under 0.1 seconds.\n")
+    print(f"If numba is installed and working properly, the time shown above "
+          "should be under 0.05 seconds.\n")
 
 def get_eagle_data(NDIM=3, choose="1"):
 
@@ -63,11 +64,12 @@ def plot_test_tpcf():
     sample1 = sample0[:N, :]
     print(f"Doing {N} data particles")
     a, b, c = dim
-    rbins = np.logspace(-1, np.log10(a/2.0000001), 20)
+    # rbins = np.logspace(-1, np.log10(a/2.0000001), 20)
+    rbins = np.logspace(-1, np.log10(a), 20)
     rbins2 = (rbins[1:] + rbins[:-1]) / 2 / a
 
     est = 'LS'
-    xi = tpcf.analytic_tpcf(sample1, rbins, shape='cuboid', bounds=dim, est=est)
+    xi = tpcf.tpcf_ana(sample1, rbins, shape='cuboid', bound=dim, est=est)
 
     plt.plot(rbins2, xi, 'k',)
     plt.gca().set(xscale='log', yscale='log',
