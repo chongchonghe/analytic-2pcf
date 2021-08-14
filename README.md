@@ -1,4 +1,4 @@
-# Analytic Compution of the Two-point Correlation Functions 
+# Analytic Calculation of the Two-point Correlation Functions 
 
 Some functions to compute the two-point correlation functions accurately and 
 efficiently using an analytic method. For more details of this method, check 
